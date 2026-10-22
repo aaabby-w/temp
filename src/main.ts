@@ -12,6 +12,9 @@ const HEIGHT = (TAU * RADIUS) / MAP_ASPECT;
 const DEFAULT_FOV = 71;
 const MIN_FOV = 45;
 const MAX_FOV = 78;
+// Put the cylindrical wrap inside the atlas' widest empty ocean corridor.
+// This preserves every supplied coastline while keeping the first/last texels identical.
+const MAP_SEAM_U = 0.79;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene")!;
 const screen = document.querySelector<HTMLElement>("#screen")!;
@@ -29,6 +32,12 @@ const authorCode = document.querySelector<HTMLElement>("#author-code")!;
 const authorCopy = document.querySelector<HTMLButtonElement>("#author-copy")!;
 const authorToast = document.querySelector<HTMLElement>("#author-toast")!;
 const status = document.querySelector<HTMLElement>("#viewport-status")!;
+const cursorStatus = document.querySelector<HTMLElement>("#cursor-status")!;
+const tooltip = document.querySelector<HTMLElement>("#node-tooltip")!;
+const connection = document.querySelector<SVGSVGElement>("#node-connection")!;
+const connectionPath = document.querySelector<SVGPathElement>("#node-connection-path")!;
+const connectionOrigin = document.querySelector<SVGCircleElement>("#node-connection-origin")!;
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "high-performance" });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -50,6 +59,8 @@ scene.add(keyLight);
 const rimLight = new THREE.PointLight(0x9edbc8, 3.5, 18, 2);
 rimLight.position.set(3.5, -2, 0);
 scene.add(rimLight);
+const focusLight = new THREE.PointLight(0xb6eee1, 2.6, 7, 2);
+scene.add(focusLight);
 
 function ringGeometry(radius: number, horizontalSegments = 1024, verticalSegments = 1) {
   const positions: number[] = [];
@@ -100,6 +111,8 @@ async function loadAtlas() {
   }
   const texture = new THREE.Texture(source);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.offset.x = MAP_SEAM_U;
   texture.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -120,7 +133,9 @@ function makeHeightTexture(image: HTMLImageElement) {
     const g = pixels.data[index + 1] / 255;
     const b = pixels.data[index + 2] / 255;
     const distanceFromWhite = 1 - Math.min(r, g, b);
-    const mask = THREE.MathUtils.smoothstep(distanceFromWhite, 0.035, 0.16);
+    // All land becomes one clean plateau. Region colors are no longer mistaken
+    // for terrain height, which previously created muddy blocks inside countries.
+    const mask = THREE.MathUtils.smoothstep(distanceFromWhite, 0.014, 0.052);
     const value = Math.round(mask * 255);
     pixels.data[index] = value;
     pixels.data[index + 1] = value;
@@ -129,6 +144,8 @@ function makeHeightTexture(image: HTMLImageElement) {
   }
   context.putImageData(pixels, 0, 0);
   const texture = new THREE.CanvasTexture(layer);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.offset.x = MAP_SEAM_U;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = true;
@@ -165,7 +182,7 @@ function makeGrid() {
 
 const atlas = await loadAtlas();
 const heightTexture = makeHeightTexture(atlas.image);
-const baseMaterial = new THREE.MeshBasicMaterial({ map: atlas.texture, side: THREE.DoubleSide });
+const baseMaterial = new THREE.MeshBasicMaterial({ color: 0xf8fbfa, side: THREE.DoubleSide });
 baseMaterial.toneMapped = false;
 const baseMesh = new THREE.Mesh(ringGeometry(RADIUS), baseMaterial);
 ring.add(baseMesh);
@@ -175,9 +192,9 @@ const reliefMaterial = new THREE.MeshStandardMaterial({
   alphaMap: heightTexture,
   alphaTest: 0.08,
   displacementMap: heightTexture,
-  displacementScale: 0.19,
+  displacementScale: 0.075,
   bumpMap: heightTexture,
-  bumpScale: 0.055,
+  bumpScale: 0.014,
   emissive: 0xffffff,
   emissiveMap: atlas.texture,
   emissiveIntensity: 0.58,
@@ -194,16 +211,61 @@ const gridMaterial = new THREE.MeshBasicMaterial({
 });
 ring.add(new THREE.Mesh(ringGeometry(RADIUS - 0.235), gridMaterial));
 
+const coastUniforms = {
+  time: { value: 0 },
+  heightMap: { value: heightTexture },
+  glowColor: { value: new THREE.Color(0x78b6a6) },
+  intensity: { value: 0.72 },
+};
+const coastMaterial = new THREE.ShaderMaterial({
+  uniforms: coastUniforms,
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D heightMap;
+    uniform float time;
+    uniform vec3 glowColor;
+    uniform float intensity;
+    varying vec2 vUv;
+    void main() {
+      vec2 texel = vec2(1.0 / 4096.0, 1.0 / 950.0);
+      float c = texture2D(heightMap, vUv).r;
+      float edge = abs(c - texture2D(heightMap, vUv + vec2(texel.x, 0.0)).r)
+        + abs(c - texture2D(heightMap, vUv - vec2(texel.x, 0.0)).r)
+        + abs(c - texture2D(heightMap, vUv + vec2(0.0, texel.y)).r)
+        + abs(c - texture2D(heightMap, vUv - vec2(0.0, texel.y)).r);
+      edge = smoothstep(0.035, 0.38, edge);
+      float scanner = fract(time * 0.0085);
+      float scanDistance = abs(fract(vUv.x - scanner + 0.5) - 0.5);
+      float scan = 1.0 - smoothstep(0.0, 0.055, scanDistance);
+      float breath = 0.46 + 0.18 * sin(time * 0.42 + vUv.x * 7.0);
+      float alpha = edge * (0.018 * breath + 0.10 * scan) * intensity;
+      gl_FragColor = vec4(glowColor, alpha);
+    }
+  `,
+});
+ring.add(new THREE.Mesh(ringGeometry(RADIUS - 0.255, 1024, 1), coastMaterial));
+
 let theme: Theme = localStorage.getItem("fantasy-map-theme") === "dark" ? "dark" : "light";
 function applyTheme() {
   document.documentElement.dataset.theme = theme;
   const dark = theme === "dark";
   renderer.setClearColor(dark ? 0x07100f : 0xe8f0ed, 1);
-  baseMaterial.color.set(dark ? 0x506b63 : 0xffffff);
+  baseMaterial.color.set(dark ? 0x07100f : 0xf8fbfa);
   reliefMaterial.color.set(dark ? 0xa9c2ba : 0xffffff);
   reliefMaterial.emissiveIntensity = dark ? 0.18 : 0.58;
   gridMaterial.color.set(dark ? 0x9bb1aa : 0x355c51);
   gridMaterial.opacity = dark ? 0.14 : 0.1;
+  coastUniforms.glowColor.value.set(dark ? 0x86cbbb : 0x376f62);
+  coastUniforms.intensity.value = dark ? 0.46 : 0.30;
   document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", dark ? "#07100f" : "#e8f0ed");
   localStorage.setItem("fantasy-map-theme", theme);
   requestRender();
@@ -211,7 +273,8 @@ function applyTheme() {
 
 function nodeVector(node: AtlasNode) {
   const { u, v } = normalizedPosition(node);
-  const angle = (u - 0.5) * TAU;
+  const displayU = (u - MAP_SEAM_U + 1) % 1;
+  const angle = (displayU - 0.5) * TAU;
   return new THREE.Vector3((RADIUS - 0.32) * Math.sin(angle), (0.5 - v) * HEIGHT, -(RADIUS - 0.32) * Math.cos(angle));
 }
 
@@ -221,8 +284,13 @@ const bindings: MarkerBinding[] = ATLAS_NODES.map((node, index) => {
   button.type = "button";
   button.className = `map-node ${node.kind}`;
   button.setAttribute("aria-label", `${node.code} ${node.name}`);
-  button.innerHTML = `<i aria-hidden="true"></i><span><em>${node.code}</em><b>${node.name}</b></span>`;
+  button.innerHTML = `<i aria-hidden="true"></i>`;
   button.addEventListener("click", (event) => { event.stopPropagation(); selectNode(index, true); });
+  button.addEventListener("pointerenter", (event) => showNodeTooltip(index, event.clientX, event.clientY));
+  button.addEventListener("pointermove", (event) => positionTooltip(event.clientX, event.clientY));
+  button.addEventListener("pointerleave", hideNodeTooltip);
+  button.addEventListener("focus", () => showNodeTooltip(index));
+  button.addEventListener("blur", hideNodeTooltip);
   nodesRoot.append(button);
   let railButton: HTMLButtonElement | undefined;
   if (node.kind === "named") {
@@ -236,7 +304,7 @@ const bindings: MarkerBinding[] = ATLAS_NODES.map((node, index) => {
 });
 
 let active = 0;
-let rotation = (normalizedPosition(ATLAS_NODES[active]).u - 0.5) * TAU;
+let rotation = (((normalizedPosition(ATLAS_NODES[active]).u - MAP_SEAM_U + 1) % 1) - 0.5) * TAU;
 let targetRotation = rotation;
 let fov = DEFAULT_FOV;
 let targetFov = DEFAULT_FOV;
@@ -250,6 +318,30 @@ let pointerMoved = false;
 let authorMode = new URLSearchParams(location.search).get("editNodes") === "1";
 let toastTimer = 0;
 let lastSnippet = "";
+let hoveredNode = -1;
+let activeScreenPoint = { x: 0, y: 0, visible: false };
+
+function positionTooltip(clientX?: number, clientY?: number) {
+  const rect = screen.getBoundingClientRect();
+  const markerRect = hoveredNode >= 0 ? bindings[hoveredNode].button.getBoundingClientRect() : null;
+  const x = clientX === undefined ? (markerRect ? markerRect.left - rect.left + markerRect.width * 0.5 : activeScreenPoint.x) : clientX - rect.left;
+  const y = clientY === undefined ? (markerRect ? markerRect.top - rect.top + markerRect.height * 0.5 : activeScreenPoint.y) : clientY - rect.top;
+  tooltip.style.setProperty("--tooltip-x", `${THREE.MathUtils.clamp(x + 16, 12, rect.width - 190)}px`);
+  tooltip.style.setProperty("--tooltip-y", `${THREE.MathUtils.clamp(y + 18, 78, rect.height - 90)}px`);
+}
+
+function showNodeTooltip(index: number, clientX?: number, clientY?: number) {
+  hoveredNode = index;
+  const node = ATLAS_NODES[index];
+  tooltip.innerHTML = `<span>${node.code} / ${node.kind === "named" ? "ARCHIVED" : "SIGNAL"}</span><strong>${node.name}</strong><small>X ${Math.round(node.x)} · Y ${Math.round(node.y)}</small>`;
+  tooltip.classList.add("show");
+  positionTooltip(clientX, clientY);
+}
+
+function hideNodeTooltip() {
+  hoveredNode = -1;
+  tooltip.classList.remove("show");
+}
 
 function updatePanel() {
   const node = ATLAS_NODES[active];
@@ -257,7 +349,11 @@ function updatePanel() {
   const typeLabel = node.kind === "named" ? "NAMED NODE" : "UNNAMED SIGNAL";
   panel.dataset.kind = node.kind;
   panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>原图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p>${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
+  panel.classList.remove("is-revealing");
+  void panel.offsetWidth;
+  if (!reducedMotion.matches) panel.classList.add("is-revealing");
   panel.querySelector<HTMLButtonElement>("#panel-reset")?.addEventListener("click", resetView);
+  nodesRoot.classList.add("has-selection");
   bindings.forEach(({ button, railButton }, index) => {
     button.classList.toggle("active", index === active);
     railButton?.classList.toggle("active", index === active);
@@ -269,16 +365,26 @@ function nearestTurn(angle: number) { return angle + Math.round((rotation - angl
 function selectNode(index: number, focus = false) {
   active = index;
   const { u } = normalizedPosition(ATLAS_NODES[index]);
-  targetRotation = nearestTurn((u - 0.5) * TAU);
+  const displayU = (u - MAP_SEAM_U + 1) % 1;
+  targetRotation = nearestTurn((displayU - 0.5) * TAU);
   if (focus) targetFov = 54;
   velocityX = 0;
   updatePanel();
+  const marker = bindings[index].button;
+  marker.classList.remove("scan-hit");
+  void marker.offsetWidth;
+  marker.classList.add("scan-hit");
+  window.setTimeout(() => marker.classList.remove("scan-hit"), 980);
+  connection.classList.remove("is-drawing");
+  void connection.getBoundingClientRect();
+  connection.classList.add("is-drawing");
   animate();
 }
 
 function resetView() {
   const home = normalizedPosition(ATLAS_NODES[0]);
-  targetRotation = nearestTurn((home.u - 0.5) * TAU);
+  const displayU = (home.u - MAP_SEAM_U + 1) % 1;
+  targetRotation = nearestTurn((displayU - 0.5) * TAU);
   targetFov = DEFAULT_FOV;
   velocityX = 0;
   animate();
@@ -287,6 +393,14 @@ function resetView() {
 function setZoom(nextFov: number) {
   targetFov = THREE.MathUtils.clamp(nextFov, MIN_FOV, MAX_FOV);
   animate();
+}
+
+function zoomAt(nextFov: number, clientX: number) {
+  const rect = screen.getBoundingClientRect();
+  const pointerX = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const clamped = THREE.MathUtils.clamp(nextFov, MIN_FOV, MAX_FOV);
+  targetRotation += pointerX * (clamped - targetFov) * 0.0024;
+  setZoom(clamped);
 }
 
 function projectNodes() {
@@ -301,12 +415,30 @@ function projectNodes() {
     button.style.setProperty("--y", `${(-projected.y * 0.5 + 0.5) * rect.height}px`);
     button.style.setProperty("--depth", `${THREE.MathUtils.clamp((-world.z - 2) / RADIUS, 0.58, 1)}`);
     button.toggleAttribute("data-visible", visible);
+    if (index === active) activeScreenPoint = {
+      x: (projected.x * 0.5 + 0.5) * rect.width,
+      y: (-projected.y * 0.5 + 0.5) * rect.height,
+      visible,
+    };
   });
+  const panelRect = panel.getBoundingClientRect();
+  const endX = panelRect.left - rect.left + 1;
+  const endY = panelRect.top - rect.top + Math.min(54, panelRect.height * 0.3);
+  const startX = activeScreenPoint.x;
+  const startY = activeScreenPoint.y;
+  const bend = Math.max(44, Math.abs(endX - startX) * 0.42);
+  connectionPath.setAttribute("d", `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend * 0.28} ${endY}, ${endX} ${endY}`);
+  connectionOrigin.setAttribute("cx", `${startX}`);
+  connectionOrigin.setAttribute("cy", `${startY}`);
+  connection.toggleAttribute("data-visible", activeScreenPoint.visible);
+  if (hoveredNode >= 0 && document.activeElement === bindings[hoveredNode]?.button) {
+    positionTooltip();
+  }
 }
 
 function updateStatus() {
   const wrappedDegrees = ((THREE.MathUtils.radToDeg(rotation) % 360) + 360) % 360;
-  status.textContent = `AZ ${wrappedDegrees.toFixed(1)}° · ZOOM ${Math.round((DEFAULT_FOV / fov) * 100)}% · ${atlas.width}PX MASTER`;
+  status.textContent = `AZ ${wrappedDegrees.toFixed(1)}° · ZOOM ${Math.round((DEFAULT_FOV / fov) * 100)}% · ${atlas.width}PX`;
 }
 
 function resize() {
@@ -320,6 +452,8 @@ function resize() {
 
 function render() {
   ring.rotation.y = rotation;
+  ring.updateMatrixWorld(true);
+  focusLight.position.copy(nodePoints[active]).applyMatrix4(ring.matrixWorld).multiplyScalar(0.48);
   camera.fov = fov;
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
@@ -339,9 +473,13 @@ function tick(time: number) {
     rotation += velocityX * dt;
     targetRotation += velocityX * dt;
   }
+  coastUniforms.time.value = time * 0.001;
+  const breathe = reducedMotion.matches ? 0 : Math.sin(time * 0.00038) * 0.035;
+  reliefMaterial.emissiveIntensity = (theme === "dark" ? 0.18 : 0.58) + breathe;
+  rimLight.intensity = (theme === "dark" ? 2.7 : 3.5) + (reducedMotion.matches ? 0 : Math.sin(time * 0.00031) * 0.22);
   render();
   const moving = Math.abs(targetRotation - rotation) > 0.0001 || Math.abs(targetFov - fov) > 0.01 || Math.abs(velocityX) > 0.00002;
-  if (moving) animate();
+  if (moving || !reducedMotion.matches) animate();
 }
 
 function animate() { if (!animationFrame) { lastFrameTime = performance.now(); animationFrame = requestAnimationFrame(tick); } }
@@ -365,7 +503,8 @@ function mapCoordinateAt(clientX: number, clientY: number) {
   raycaster.setFromCamera(pointerNdc, camera);
   const hit = raycaster.intersectObject(baseMesh, false)[0];
   if (!hit?.uv) return null;
-  return { x: Math.round(hit.uv.x * MAP_SIZE.width), y: Math.round((1 - hit.uv.y) * MAP_SIZE.height) };
+  const sourceU = (hit.uv.x + MAP_SEAM_U) % 1;
+  return { x: Math.round(sourceU * MAP_SIZE.width), y: Math.round((1 - hit.uv.y) * MAP_SIZE.height) };
 }
 
 function setAuthorMode(next: boolean) {
@@ -413,7 +552,7 @@ async function copyNodeSnippet(clientX: number, clientY: number) {
 screen.addEventListener("wheel", (event) => {
   event.preventDefault();
   if (event.ctrlKey || event.metaKey) {
-    setZoom(targetFov + event.deltaY * 0.045);
+    zoomAt(targetFov + event.deltaY * 0.045, event.clientX);
     return;
   }
   const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
@@ -437,6 +576,8 @@ screen.addEventListener("pointerdown", (event) => {
 
 screen.addEventListener("pointermove", (event) => {
   updatePointerLight(event.clientX, event.clientY);
+  const liveCoordinate = mapCoordinateAt(event.clientX, event.clientY);
+  cursorStatus.textContent = liveCoordinate ? `X ${liveCoordinate.x} · Y ${liveCoordinate.y}` : "X — · Y —";
   if (authorMode) {
     const coordinate = mapCoordinateAt(event.clientX, event.clientY);
     if (coordinate) authorPosition.textContent = `X ${coordinate.x} · Y ${coordinate.y} · 点击复制`;
@@ -474,7 +615,14 @@ screen.addEventListener("click", (event) => {
 });
 screen.addEventListener("dblclick", (event) => {
   if (authorMode || (event.target as HTMLElement).closest("[data-ui]")) return;
-  if (!pointerMoved) setZoom(targetFov > 55 ? 50 : DEFAULT_FOV);
+  if (!pointerMoved) {
+    const coordinate = mapCoordinateAt(event.clientX, event.clientY);
+    if (coordinate && targetFov > 55) {
+      const displayU = (coordinate.x / MAP_SIZE.width - MAP_SEAM_U + 1) % 1;
+      targetRotation = nearestTurn((displayU - 0.5) * TAU);
+      setZoom(50);
+    } else resetView();
+  }
 });
 
 screen.addEventListener("keydown", (event) => {

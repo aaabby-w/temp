@@ -4,6 +4,7 @@
   --text: #17231f;
   --muted: #63716c;
   --accent: #446f63;
+  --signal: #5e9d8c;
   --named: #101513;
   --unnamed: #7e8a86;
   --panel: rgba(239, 246, 243, 0.61);
@@ -19,6 +20,7 @@
   --text: #e3ebe8;
   --muted: #94a29d;
   --accent: #8ab5a8;
+  --signal: #8fd2c0;
   --named: #0c1110;
   --unnamed: #7c8985;
   --panel: rgba(8, 17, 15, 0.57);
@@ -28,7 +30,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { min-width: 320px; height: 100%; margin: 0; overflow: hidden; background: var(--ground); color: var(--text); }
+html, body { position: fixed; inset: 0; min-width: 320px; width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--ground); color: var(--text); }
 button { font: inherit; }
 
 .observatory {
@@ -96,7 +98,7 @@ button { font: inherit; }
   --hud-y: 0px;
   --light-x: 50%;
   --light-y: 45%;
-  position: absolute;
+  position: fixed;
   z-index: 1;
   inset: 0;
   outline: none;
@@ -118,6 +120,32 @@ button { font: inherit; }
     radial-gradient(circle at var(--light-x) var(--light-y), rgba(255,255,255,.15), transparent 21%),
     repeating-linear-gradient(180deg, transparent 0 5px, color-mix(in srgb, var(--text) 1.8%, transparent) 6px);
   mix-blend-mode: soft-light;
+}
+
+.archive-atmosphere {
+  position: absolute;
+  z-index: 2;
+  inset: -12%;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 30% 44%, color-mix(in srgb, var(--signal) 10%, transparent), transparent 33%),
+    radial-gradient(ellipse at 74% 55%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 29%);
+  opacity: .72;
+  animation: ocean-drift 22s ease-in-out infinite alternate;
+}
+
+.archive-scan {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  left: -18%;
+  width: 18%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--signal) 9%, transparent) 48%, transparent);
+  filter: blur(10px);
+  opacity: .5;
+  animation: archive-scan 19s linear infinite;
 }
 
 .vignette {
@@ -148,7 +176,7 @@ button { font: inherit; }
   opacity: 0;
   pointer-events: none;
   transform: translate3d(calc(var(--x) - 20px), calc(var(--y) - 20px), 0) scale(var(--depth));
-  transition: opacity 140ms;
+  transition: opacity 180ms, filter 180ms;
 }
 
 .map-node[data-visible] { opacity: 1; pointer-events: auto; }
@@ -165,6 +193,14 @@ button { font: inherit; }
   transform: translate(-50%, -50%);
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
+.map-node > i::after {
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--signal);
+  border-radius: 50%;
+  content: "";
+  opacity: 0;
+}
 
 .map-node.named > i { width: 8px; height: 8px; background: var(--named); box-shadow: 0 0 0 3px rgba(255,255,255,.62), 0 3px 10px rgba(0,0,0,.28); }
 .map-node.named::before, .map-node.named::after {
@@ -178,29 +214,45 @@ button { font: inherit; }
   animation: radar 3.9s infinite;
 }
 .map-node.named::after { animation-delay: 1.95s; }
-.map-node > span {
-  position: absolute;
-  top: 32px;
-  left: 50%;
-  display: grid;
-  width: max-content;
-  min-width: 92px;
-  gap: 2px;
-  padding: 7px 9px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--panel-strong);
-  box-shadow: 0 12px 30px var(--shadow);
-  text-align: left;
-  opacity: 0;
-  backdrop-filter: blur(13px);
-  transform: translate(-50%, -4px);
-  transition: 180ms ease;
-}
-.map-node em { color: var(--muted); font-size: 7px; font-style: normal; letter-spacing: 0.16em; }
-.map-node b { font-family: "Iowan Old Style", "Songti SC", serif; font-size: 11px; font-weight: 400; letter-spacing: 0.05em; }
 .map-node:hover > i, .map-node:focus-visible > i, .map-node.active > i { transform: translate(-50%, -50%) scale(1.42); box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 19%, transparent), 0 4px 14px rgba(0,0,0,.3); }
-.map-node:hover > span, .map-node:focus-visible > span, .map-node.active > span { opacity: 1; transform: translate(-50%, 0); }
+.nodes.has-selection .map-node[data-visible]:not(.active):not(:hover):not(:focus-visible) { opacity: .34; filter: saturate(.55); }
+.map-node.scan-hit > i::after { animation: selection-wave 900ms cubic-bezier(.2,.8,.2,1); }
+
+.node-tooltip {
+  --tooltip-x: -300px;
+  --tooltip-y: -300px;
+  position: absolute;
+  z-index: 13;
+  top: 0;
+  left: 0;
+  display: grid;
+  min-width: 152px;
+  gap: 3px;
+  padding: 9px 11px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(var(--tooltip-x), var(--tooltip-y), 0) translateY(5px);
+  transition: opacity 120ms ease, transform 150ms cubic-bezier(.2,.8,.2,1);
+}
+.node-tooltip.show { opacity: 1; transform: translate3d(var(--tooltip-x), var(--tooltip-y), 0); }
+.node-tooltip span, .node-tooltip small { color: var(--muted); font-size: 7px; letter-spacing: .15em; }
+.node-tooltip strong { font-family: "Iowan Old Style", "Songti SC", serif; font-size: 16px; font-weight: 400; }
+
+.node-connection {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+.node-connection[data-visible] { opacity: .72; }
+.node-connection path { fill: none; stroke: var(--signal); stroke-width: .8; stroke-dasharray: 4 6; vector-effect: non-scaling-stroke; }
+.node-connection circle { fill: var(--signal); filter: drop-shadow(0 0 5px color-mix(in srgb, var(--signal) 60%, transparent)); }
+.node-connection.is-drawing path { animation: draw-link 720ms ease-out both; }
 
 .city-panel {
   position: absolute;
@@ -212,6 +264,25 @@ button { font: inherit; }
   transform: translate3d(var(--hud-x), var(--hud-y), 0);
   transition: transform 220ms ease, background 220ms ease;
 }
+.city-panel::after {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 34%;
+  height: 1px;
+  content: "";
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--signal), transparent);
+  pointer-events: none;
+}
+.city-panel.is-revealing::after { animation: panel-sweep 720ms ease-out 80ms both; }
+.city-panel.is-revealing header > *, .city-panel.is-revealing dl > *, .city-panel.is-revealing > p, .city-panel.is-revealing footer { animation: dossier-reveal 420ms ease-out both; }
+.city-panel.is-revealing header strong { animation-delay: 55ms; }
+.city-panel.is-revealing header small { animation-delay: 100ms; }
+.city-panel.is-revealing dl > :first-child { animation-delay: 135ms; }
+.city-panel.is-revealing dl > :last-child { animation-delay: 180ms; }
+.city-panel.is-revealing > p { animation-delay: 215ms; }
+.city-panel.is-revealing footer { animation-delay: 260ms; }
 .city-panel:hover { background: var(--panel-strong); }
 .city-panel header { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .city-panel header span, .city-panel header small, .city-panel dt, .city-panel footer { color: var(--muted); font-size: 8px; letter-spacing: 0.14em; }
@@ -249,12 +320,22 @@ button { font: inherit; }
 .author-toast.show { opacity: 1; transform: translate(-50%, -50%); }
 
 .footer { position: absolute; z-index: 14; right: 4vw; bottom: max(0px, env(safe-area-inset-bottom)); left: 4vw; display: flex; align-items: center; justify-content: space-between; height: 42px; border-top: 1px solid var(--line); color: var(--muted); }
+.footer-status { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+.ready-lamp { width: 5px; height: 5px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent), 0 0 9px color-mix(in srgb, var(--signal) 55%, transparent); animation: ready-breathe 3.2s ease-in-out infinite; }
+#cursor-status { padding-left: 9px; border-left: 1px solid var(--line); }
 .footer-note { position: absolute; left: 50%; transform: translateX(-50%); }
 .footer-actions { display: flex; height: 100%; align-items: center; }
 .footer-actions button { height: 100%; padding: 0 10px; }
 #author-toggle { margin-right: 2px; }
 
 @keyframes radar { 0% { opacity: 0; transform: scale(0.35); } 18% { opacity: 0.52; } 82%, 100% { opacity: 0; transform: scale(2.1); } }
+@keyframes ocean-drift { to { transform: translate3d(4%, -2%, 0) scale(1.04); } }
+@keyframes archive-scan { 0%, 16% { transform: translateX(0); opacity: 0; } 20% { opacity: .45; } 48% { transform: translateX(760%); opacity: .24; } 52%, 100% { transform: translateX(760%); opacity: 0; } }
+@keyframes selection-wave { 0% { opacity: .7; transform: scale(.4); } 100% { opacity: 0; transform: scale(6.8); } }
+@keyframes draw-link { from { stroke-dashoffset: 140; opacity: 0; } to { stroke-dashoffset: 0; opacity: 1; } }
+@keyframes dossier-reveal { from { opacity: 0; transform: translateY(5px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes panel-sweep { 0% { opacity: 0; transform: translateX(0); } 20% { opacity: .9; } 100% { opacity: 0; transform: translateX(200%); } }
+@keyframes ready-breathe { 50% { opacity: .55; box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal) 7%, transparent), 0 0 12px color-mix(in srgb, var(--signal) 42%, transparent); } }
 
 @media (max-width: 760px) {
   .masthead { top: max(10px, env(safe-area-inset-top)); right: 12px; left: 12px; width: auto; padding: 10px 12px; }
@@ -269,7 +350,7 @@ button { font: inherit; }
   .footer { right: 12px; left: 12px; }
   .footer-note { display: none; }
   .map-node { width: 44px; height: 44px; transform: translate3d(calc(var(--x) - 22px), calc(var(--y) - 22px), 0) scale(var(--depth)); }
-  .map-node > span { top: 35px; }
+  .node-tooltip { display: none; }
   .author-tools { right: 11px; bottom: calc(48px + env(safe-area-inset-bottom)); left: 11px; justify-content: space-between; }
   .author-snippet { right: 11px; bottom: calc(94px + env(safe-area-inset-bottom)); left: 11px; width: auto; }
   .author-mode .viewport-controls { display: none; }
@@ -283,5 +364,7 @@ button { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   .map-node.named::before, .map-node.named::after { animation: none; }
+  .archive-atmosphere, .archive-scan, .ready-lamp { animation: none; }
+  .node-connection.is-drawing path, .city-panel.is-revealing::after, .city-panel.is-revealing * { animation: none; }
   .hud { transition: none !important; }
 }
