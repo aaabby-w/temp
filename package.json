@@ -1,0 +1,20 @@
+{
+  "name": "fantasy-ring-map-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "5.9.3",
+    "vite": "8.0.13"
+  }
+}
