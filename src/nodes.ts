@@ -57,6 +57,21 @@ const manual: AtlasNode[] = [
   // { code: "U60", name: "未命名节点 60", kind: "unnamed", x: 4096, y: 950, note: "等待补充档案。" },
 ];
 
+const promotedNodes: Record<string, {
+  code: string;
+  name: string;
+  note: string;
+}> = {
+  "U24": {
+    code: "08",
+    name: "西木会馆",
+    note: `馆长还没有填写介绍哦。
+
+馆长：待补充
+执行者：待补充`,
+  },
+};
+
 export const ATLAS_NODES: AtlasNode[] = [
   ...named.map(([code, name, x, y]) => ({
     code,
@@ -87,13 +102,18 @@ export const ATLAS_NODES: AtlasNode[] = [
   "07": "",
 } as Record<string, string>)[code] || "等待补充档案。",
   })),
-  ...unnamed.map(([x, y], index) => ({
-    code: `U${String(index + 1).padStart(2, "0")}`,
-    name: `未命名节点 ${String(index + 1).padStart(2, "0")}`,
-    kind: "unnamed" as const,
+  ...unnamed.map(([x, y], index) => {
+  const originalCode = `U${String(index + 1).padStart(2, "0")}`;
+  const promoted = promotedNodes[originalCode];
+
+  return {
+    code: promoted?.code ?? originalCode,
+    name: promoted?.name ?? `未命名节点 ${String(index + 1).padStart(2, "0")}`,
+    kind: promoted ? ("named" as const) : ("unnamed" as const),
     ...fromLegacy(x, y),
-    note: "参考图中的未命名观测点，等待补充正式名称与档案。",
-  })),
+    note: promoted?.note ?? "参考图中的未命名观测点，等待补充正式名称与档案。",
+  };
+}),
   ...manual,
 ];
 
