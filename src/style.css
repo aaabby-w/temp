@@ -70,7 +70,7 @@ button { font: inherit; }
   top: max(22px, env(safe-area-inset-top));
   right: auto;
   left: 3vw;
-  width: min(370px, 44vw);
+  width: min(460px, 90vw);
   display: block;
   padding: 13px 16px 11px;
   pointer-events: none;
