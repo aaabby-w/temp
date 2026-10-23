@@ -220,7 +220,7 @@ function updatePanel() {
   const { u, v } = normalizedPosition(node);
   const typeLabel = node.kind === "named" ? "NAMED NODE" : "UNNAMED SIGNAL";
   panel.dataset.kind = node.kind;
-  panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>地图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p>${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
+  panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>地图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p style="white-space: pre-line">${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
   panel.classList.remove("is-revealing");
   void panel.offsetWidth;
   if (!reducedMotion.matches) panel.classList.add("is-revealing");
