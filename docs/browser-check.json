@@ -1,0 +1,23 @@
+{
+  "stats": {
+    "engine": "three.js r186",
+    "vectorRegions": "140",
+    "vectorTriangles": "29496",
+    "width": 2880,
+    "height": 1920
+  },
+  "maxZoom": "AZ 359.8° · ZOOM 253% · VECTOR",
+  "wheelChangedAzimuth": true,
+  "editor": "{ code: \"U60\", name: \"未命名节点 60\", kind: \"unnamed\", x: 3193, y: 819, note: \"等待补充档案。\" },",
+  "mobile": {
+    "width": 390,
+    "scrollWidth": 390,
+    "height": 844,
+    "scrollHeight": 844
+  },
+  "reducedMotion": true,
+  "rasterAtlasRequested": false,
+  "errors": [],
+  "reviewRegionCount": 140,
+  "review400PercentWidth": 36864
+}

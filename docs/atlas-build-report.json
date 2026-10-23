@@ -1,0 +1,29 @@
+{
+  "authoringFile": "art-source/atlas-editable.svg",
+  "regionCount": 140,
+  "fillTriangleCount": 29496,
+  "overlapArea": 0.0,
+  "sharedBoundaryCoverageValid": true,
+  "periodicSeamMatches": true,
+  "seamProfile": [
+    [
+      186.0,
+      348.0,
+      "#b2dbcb"
+    ],
+    [
+      438.0,
+      542.0,
+      "#baf5dc"
+    ]
+  ],
+  "dimensions": [
+    9216,
+    1900
+  ],
+  "sourceDimensions": [
+    8192,
+    1900
+  ],
+  "extensionSource": "Assistant-authored vector coastlines, not canonical source geography. No raster image generation."
+}

@@ -1,0 +1,4 @@
+# Only needed to compile manually edited SVG; no raster processing required.
+shapely==2.2.0
+svgelements==1.9.6
+numpy>=2.0,<3

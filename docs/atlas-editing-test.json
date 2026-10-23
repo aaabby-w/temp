@@ -1,0 +1,8 @@
+{
+  "originalGeographyUnchanged": true,
+  "deletedIsland": "region-015",
+  "curveAndTransformImport": true,
+  "overlapRejectedWithoutOverwrite": true,
+  "openPathRejected": true,
+  "periodicSeamMatches": true
+}

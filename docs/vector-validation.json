@@ -1,0 +1,9 @@
+{
+  "regionCount": 140,
+  "fillTriangleCount": 29496,
+  "exportedCoverageValid": true,
+  "largestTriangleCoverageDifferenceSourcePixelsSquared": 0.00874,
+  "largestTriangleOverlapSourcePixelsSquared": 0.0,
+  "sourceChecksumUnchanged": true,
+  "periodicSeamMatches": true
+}

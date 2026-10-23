@@ -1,4 +1,5 @@
-export const MAP_SIZE = { width: 8192, height: 1900 } as const;
+export const MAP_SIZE = { width: 9216, height: 1900 } as const;
+const SOURCE_MAP_SIZE = { width: 8192, height: 1900 } as const;
 const LEGACY_MAP_SIZE = { width: 4684, height: 1080 } as const;
 
 export type AtlasNode = {
@@ -40,13 +41,13 @@ const unnamed = [
 ] as const;
 
 // Existing points were read from the earlier 4684 × 1080 marked reference.
-// Convert them to the current 8192 × 1900 master without changing their
+// Convert them to the original 8192 × 1900 portion without changing their
 // geographic position. New manually placed points should use the `manual`
 // array below and current-master pixel coordinates directly.
 function fromLegacy(x: number, y: number) {
   return {
-    x: (x / LEGACY_MAP_SIZE.width) * MAP_SIZE.width,
-    y: (y / LEGACY_MAP_SIZE.height) * MAP_SIZE.height,
+    x: (x / LEGACY_MAP_SIZE.width) * SOURCE_MAP_SIZE.width,
+    y: (y / LEGACY_MAP_SIZE.height) * SOURCE_MAP_SIZE.height,
   };
 }
 

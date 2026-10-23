@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>原图 / 矢量 · 地图校对</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23b4e9cd' stroke='%23397b8a'/%3E%3C/svg%3E">
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#edf3ef;color:#233c35;font:14px system-ui,sans-serif}header{padding:20px 24px;background:#f6faf8;border-bottom:1px solid #b9ccc2}h1{font-size:23px;margin:0 0 8px;font-weight:500}p{margin:8px 0;line-height:1.6;color:#526d62}a{color:inherit}nav{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:16px}label{display:flex;align-items:center;gap:8px}button,select{font:inherit;padding:7px 12px;border:1px solid #9eb8ab;border-radius:5px;background:#fff;color:inherit}#viewport{height:calc(100dvh - 215px);min-height:300px;overflow:auto;margin:12px;border:1px solid #b9ccc2;background:white}#map{position:relative;width:2048px;height:475px}#map>img,#vector{position:absolute;width:100%;height:100%;inset:0;display:block}#vector{clip-path:inset(0 0 0 50%)}#vector svg{display:block;width:100%;height:100%}#divider{position:absolute;top:0;bottom:0;left:50%;border-left:2px solid #263d35;pointer-events:none}output{font-variant-numeric:tabular-nums}#region{min-width:130px} @media(max-width:600px){header{padding:14px}h1{font-size:20px}nav{gap:10px}#viewport{height:calc(100dvh - 290px)}}
+</style>
+<header>
+  <h1>原图 / 矢量 · 地图校对</h1>
+  <p>左侧是原始 JPG，右侧是独立 SVG 色块。拖动分界滑杆比较；放大后可滚动查看细节。点击右侧色块查看编号。</p>
+  <p>小岛和浅色边界仍需人工校对。原图占左侧 8192 单位；最右 1024 单位为新增接缝过渡，不属于原图。<a href="./">返回地图</a> · <a href="./?view=seam">查看接缝</a> · <a href="assets/atlas.svg" download>下载显示用 SVG（非编辑母版）</a></p>
+  <nav>
+    <label>对比分界 <input id="split" type="range" min="0" max="100" value="50"></label>
+    <label>缩放 <select id="zoom"><option value=".25">25%</option><option value=".5">50%</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select></label>
+    <button id="original">只看原图</button><button id="only-vector">只看矢量</button>
+    <output id="region" aria-live="polite">未选中色块</output>
+  </nav>
+</header>
+<main id="viewport"><div id="map"><img src="assets/fantasy-world-map.jpg" alt="用户提供的地图原图"><div id="vector"></div><div id="divider"></div></div></main>
+<script type="module">
+  const vector=document.querySelector('#vector'),split=document.querySelector('#split'),divider=document.querySelector('#divider'),map=document.querySelector('#map');
+  const response=await fetch('assets/atlas.svg');
+  if(!response.ok)throw new Error('无法加载 SVG');
+  vector.innerHTML=await response.text();
+  const width=vector.querySelector('svg').viewBox.baseVal.width;
+  map.style.width=`${width*.25}px`;
+  document.querySelector('#map>img').style.width=`${8192/width*100}%`;
+  function update(){vector.style.clipPath=`inset(0 0 0 ${split.value}%)`;divider.style.left=`${split.value}%`}
+  split.addEventListener('input',update);
+  document.querySelector('#original').onclick=()=>{split.value=100;update()};
+  document.querySelector('#only-vector').onclick=()=>{split.value=0;update()};
+  document.querySelector('#zoom').onchange=event=>{const scale=Number(event.target.value);map.style.width=`${width*scale}px`;map.style.height=`${1900*scale}px`};
+  vector.onclick=event=>{const id=event.target.id;if(id)document.querySelector('#region').value=id.replace(/-part\d+$/,'')};
+</script>
+</html>

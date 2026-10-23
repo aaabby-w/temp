@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createVectorAtlas } from "./vector-atlas";
 import { ATLAS_NODES, MAP_SIZE, normalizedPosition, type AtlasNode } from "./nodes";
 import "./style.css";
 
@@ -10,10 +11,10 @@ const RADIUS = 7.8;
 const MAP_ASPECT = MAP_SIZE.width / MAP_SIZE.height;
 const HEIGHT = (TAU * RADIUS) / MAP_ASPECT;
 const DEFAULT_FOV = 71;
-const MIN_FOV = 45;
+const MIN_FOV = 28;
 const MAX_FOV = 78;
-// Put the cylindrical wrap inside the atlas' widest empty ocean corridor.
-// This preserves every supplied coastline while keeping the first/last texels identical.
+// Coordinate origin; the added 1024-pixel vector strip closes the actual
+// source edge cut. Moving this origin alone would not have repaired the seam.
 const MAP_SEAM_U = 0.79;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene")!;
@@ -41,8 +42,7 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "high-performance" });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.04;
+renderer.toneMapping = THREE.NoToneMapping;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
 const scene = new THREE.Scene();
@@ -52,15 +52,6 @@ camera.lookAt(0, 0, -1);
 
 const ring = new THREE.Group();
 scene.add(ring);
-scene.add(new THREE.HemisphereLight(0xf8fffc, 0x36544c, 1.08));
-const keyLight = new THREE.DirectionalLight(0xffffff, 0.48);
-keyLight.position.set(-3.5, 5, 1.5);
-scene.add(keyLight);
-const rimLight = new THREE.PointLight(0x9edbc8, 3.5, 18, 2);
-rimLight.position.set(3.5, -2, 0);
-scene.add(rimLight);
-const focusLight = new THREE.PointLight(0xb6eee1, 2.6, 7, 2);
-scene.add(focusLight);
 
 function ringGeometry(radius: number, horizontalSegments = 1024, verticalSegments = 1) {
   const positions: number[] = [];
@@ -91,68 +82,6 @@ function ringGeometry(radius: number, horizontalSegments = 1024, verticalSegment
   return geometry;
 }
 
-async function loadAtlas() {
-  const image = new Image();
-  image.src = `${import.meta.env.BASE_URL}assets/fantasy-world-map.jpg`;
-  await image.decode();
-  const maxTextureSize = renderer.capabilities.maxTextureSize;
-  let source: CanvasImageSource = image;
-  let width = image.naturalWidth;
-  let height = image.naturalHeight;
-  if (width > maxTextureSize || height > maxTextureSize) {
-    const scale = Math.min(maxTextureSize / width, maxTextureSize / height);
-    width = Math.round(width * scale);
-    height = Math.round(height * scale);
-    const fallback = document.createElement("canvas");
-    fallback.width = width;
-    fallback.height = height;
-    fallback.getContext("2d")!.drawImage(image, 0, 0, width, height);
-    source = fallback;
-  }
-  const texture = new THREE.Texture(source);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.offset.x = MAP_SEAM_U;
-  texture.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = true;
-  texture.needsUpdate = true;
-  return { image, texture, width, height };
-}
-
-function makeHeightTexture(image: HTMLImageElement) {
-  const layer = document.createElement("canvas");
-  layer.width = Math.min(4096, image.naturalWidth);
-  layer.height = Math.round(layer.width / MAP_ASPECT);
-  const context = layer.getContext("2d", { willReadFrequently: true })!;
-  context.drawImage(image, 0, 0, layer.width, layer.height);
-  const pixels = context.getImageData(0, 0, layer.width, layer.height);
-  for (let index = 0; index < pixels.data.length; index += 4) {
-    const r = pixels.data[index] / 255;
-    const g = pixels.data[index + 1] / 255;
-    const b = pixels.data[index + 2] / 255;
-    const distanceFromWhite = 1 - Math.min(r, g, b);
-    // All land becomes one clean plateau. Region colors are no longer mistaken
-    // for terrain height, which previously created muddy blocks inside countries.
-    const mask = THREE.MathUtils.smoothstep(distanceFromWhite, 0.014, 0.052);
-    const value = Math.round(mask * 255);
-    pixels.data[index] = value;
-    pixels.data[index + 1] = value;
-    pixels.data[index + 2] = value;
-    pixels.data[index + 3] = 255;
-  }
-  context.putImageData(pixels, 0, 0);
-  const texture = new THREE.CanvasTexture(layer);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.offset.x = MAP_SEAM_U;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = true;
-  texture.needsUpdate = true;
-  return texture;
-}
-
 function makeGrid() {
   const layer = document.createElement("canvas");
   layer.width = 4096;
@@ -180,92 +109,33 @@ function makeGrid() {
   return texture;
 }
 
-const atlas = await loadAtlas();
-const heightTexture = makeHeightTexture(atlas.image);
-const baseMaterial = new THREE.MeshBasicMaterial({ color: 0xf8fbfa, side: THREE.DoubleSide });
-baseMaterial.toneMapped = false;
-const baseMesh = new THREE.Mesh(ringGeometry(RADIUS), baseMaterial);
-ring.add(baseMesh);
-
-const reliefMaterial = new THREE.MeshStandardMaterial({
-  map: atlas.texture,
-  alphaMap: heightTexture,
-  alphaTest: 0.08,
-  displacementMap: heightTexture,
-  displacementScale: 0.075,
-  bumpMap: heightTexture,
-  bumpScale: 0.014,
-  emissive: 0xffffff,
-  emissiveMap: atlas.texture,
-  emissiveIntensity: 0.58,
-  roughness: 0.86,
-  metalness: 0.02,
+const mapMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
   side: THREE.DoubleSide,
+  toneMapped: false,
 });
-const reliefMesh = new THREE.Mesh(ringGeometry(RADIUS - 0.025, 1024, 64), reliefMaterial);
-ring.add(reliefMesh);
+const baseMesh = new THREE.Mesh(ringGeometry(RADIUS, 1024, 1), mapMaterial);
+ring.add(baseMesh);
+const atlas = await createVectorAtlas(RADIUS, HEIGHT, MAP_SEAM_U);
+ring.add(atlas.group);
+canvas.dataset.vectorRegions = String(atlas.regionCount);
+canvas.dataset.vectorTriangles = String(atlas.triangleCount);
 
 const gridMaterial = new THREE.MeshBasicMaterial({
   map: makeGrid(), transparent: true, opacity: 0.32, depthWrite: false,
   side: THREE.DoubleSide,
 });
-ring.add(new THREE.Mesh(ringGeometry(RADIUS - 0.235), gridMaterial));
-
-const coastUniforms = {
-  time: { value: 0 },
-  heightMap: { value: heightTexture },
-  glowColor: { value: new THREE.Color(0x78b6a6) },
-  intensity: { value: 0.72 },
-};
-const coastMaterial = new THREE.ShaderMaterial({
-  uniforms: coastUniforms,
-  transparent: true,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform sampler2D heightMap;
-    uniform float time;
-    uniform vec3 glowColor;
-    uniform float intensity;
-    varying vec2 vUv;
-    void main() {
-      vec2 texel = vec2(1.0 / 4096.0, 1.0 / 950.0);
-      float c = texture2D(heightMap, vUv).r;
-      float edge = abs(c - texture2D(heightMap, vUv + vec2(texel.x, 0.0)).r)
-        + abs(c - texture2D(heightMap, vUv - vec2(texel.x, 0.0)).r)
-        + abs(c - texture2D(heightMap, vUv + vec2(0.0, texel.y)).r)
-        + abs(c - texture2D(heightMap, vUv - vec2(0.0, texel.y)).r);
-      edge = smoothstep(0.035, 0.38, edge);
-      float scanner = fract(time * 0.0085);
-      float scanDistance = abs(fract(vUv.x - scanner + 0.5) - 0.5);
-      float scan = 1.0 - smoothstep(0.0, 0.055, scanDistance);
-      float breath = 0.46 + 0.18 * sin(time * 0.42 + vUv.x * 7.0);
-      float alpha = edge * (0.018 * breath + 0.10 * scan) * intensity;
-      gl_FragColor = vec4(glowColor, alpha);
-    }
-  `,
-});
-ring.add(new THREE.Mesh(ringGeometry(RADIUS - 0.255, 1024, 1), coastMaterial));
+ring.add(new THREE.Mesh(ringGeometry(RADIUS - 0.018), gridMaterial));
 
 let theme: Theme = localStorage.getItem("fantasy-map-theme") === "dark" ? "dark" : "light";
 function applyTheme() {
   document.documentElement.dataset.theme = theme;
   const dark = theme === "dark";
   renderer.setClearColor(dark ? 0x07100f : 0xe8f0ed, 1);
-  baseMaterial.color.set(dark ? 0x07100f : 0xf8fbfa);
-  reliefMaterial.color.set(dark ? 0xa9c2ba : 0xffffff);
-  reliefMaterial.emissiveIntensity = dark ? 0.18 : 0.58;
+  mapMaterial.color.set(dark ? 0x101d1b : 0xffffff);
+  atlas.setTheme(dark);
   gridMaterial.color.set(dark ? 0x9bb1aa : 0x355c51);
   gridMaterial.opacity = dark ? 0.14 : 0.1;
-  coastUniforms.glowColor.value.set(dark ? 0x86cbbb : 0x376f62);
-  coastUniforms.intensity.value = dark ? 0.46 : 0.30;
   document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", dark ? "#07100f" : "#e8f0ed");
   localStorage.setItem("fantasy-map-theme", theme);
   requestRender();
@@ -275,7 +145,7 @@ function nodeVector(node: AtlasNode) {
   const { u, v } = normalizedPosition(node);
   const displayU = (u - MAP_SEAM_U + 1) % 1;
   const angle = (displayU - 0.5) * TAU;
-  return new THREE.Vector3((RADIUS - 0.32) * Math.sin(angle), (0.5 - v) * HEIGHT, -(RADIUS - 0.32) * Math.cos(angle));
+  return new THREE.Vector3((RADIUS - 0.028) * Math.sin(angle), (0.5 - v) * HEIGHT, -(RADIUS - 0.028) * Math.cos(angle));
 }
 
 const nodePoints = ATLAS_NODES.map(nodeVector);
@@ -304,7 +174,9 @@ const bindings: MarkerBinding[] = ATLAS_NODES.map((node, index) => {
 });
 
 let active = 0;
-let rotation = (((normalizedPosition(ATLAS_NODES[active]).u - MAP_SEAM_U + 1) % 1) - 0.5) * TAU;
+const initialU = new URLSearchParams(location.search).get('view') === 'seam'
+  ? (MAP_SIZE.width - 512) / MAP_SIZE.width : normalizedPosition(ATLAS_NODES[active]).u;
+let rotation = (((initialU - MAP_SEAM_U + 1) % 1) - 0.5) * TAU;
 let targetRotation = rotation;
 let fov = DEFAULT_FOV;
 let targetFov = DEFAULT_FOV;
@@ -348,7 +220,7 @@ function updatePanel() {
   const { u, v } = normalizedPosition(node);
   const typeLabel = node.kind === "named" ? "NAMED NODE" : "UNNAMED SIGNAL";
   panel.dataset.kind = node.kind;
-  panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>原图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p>${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
+  panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>地图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p>${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
   panel.classList.remove("is-revealing");
   void panel.offsetWidth;
   if (!reducedMotion.matches) panel.classList.add("is-revealing");
@@ -438,13 +310,14 @@ function projectNodes() {
 
 function updateStatus() {
   const wrappedDegrees = ((THREE.MathUtils.radToDeg(rotation) % 360) + 360) % 360;
-  status.textContent = `AZ ${wrappedDegrees.toFixed(1)}° · ZOOM ${Math.round((DEFAULT_FOV / fov) * 100)}% · ${atlas.width}PX`;
+  status.textContent = `AZ ${wrappedDegrees.toFixed(1)}° · ZOOM ${Math.round((DEFAULT_FOV / fov) * 100)}% · VECTOR`;
 }
 
 function resize() {
   const rect = screen.getBoundingClientRect();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(Math.max(1, rect.width), Math.max(1, rect.height), false);
+  atlas.resize(rect.width, rect.height);
   camera.aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
   camera.updateProjectionMatrix();
   requestRender();
@@ -453,7 +326,6 @@ function resize() {
 function render() {
   ring.rotation.y = rotation;
   ring.updateMatrixWorld(true);
-  focusLight.position.copy(nodePoints[active]).applyMatrix4(ring.matrixWorld).multiplyScalar(0.48);
   camera.fov = fov;
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
@@ -473,13 +345,9 @@ function tick(time: number) {
     rotation += velocityX * dt;
     targetRotation += velocityX * dt;
   }
-  coastUniforms.time.value = time * 0.001;
-  const breathe = reducedMotion.matches ? 0 : Math.sin(time * 0.00038) * 0.035;
-  reliefMaterial.emissiveIntensity = (theme === "dark" ? 0.18 : 0.58) + breathe;
-  rimLight.intensity = (theme === "dark" ? 2.7 : 3.5) + (reducedMotion.matches ? 0 : Math.sin(time * 0.00031) * 0.22);
   render();
   const moving = Math.abs(targetRotation - rotation) > 0.0001 || Math.abs(targetFov - fov) > 0.01 || Math.abs(velocityX) > 0.00002;
-  if (moving || !reducedMotion.matches) animate();
+  if (moving) animate();
 }
 
 function animate() { if (!animationFrame) { lastFrameTime = performance.now(); animationFrame = requestAnimationFrame(tick); } }
@@ -515,7 +383,11 @@ function setAuthorMode(next: boolean) {
   if (authorMode) url.searchParams.set("editNodes", "1"); else url.searchParams.delete("editNodes");
   history.replaceState(null, "", url);
   authorPosition.textContent = authorMode ? "移动光标读取坐标 · 点击地图复制节点代码" : "";
-  if (!authorMode) authorSnippet.classList.remove("show");
+  if (!authorMode) {
+    authorSnippet.classList.remove("show");
+    authorToast.classList.remove("show");
+    window.clearTimeout(toastTimer);
+  }
 }
 
 async function copyText(text: string) {
