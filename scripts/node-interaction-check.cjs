@@ -57,7 +57,8 @@ const out = path.join(os.tmpdir(), 'atlas-node-qa');
   await page.locator('.map-node').nth(minor).click(); await page.waitForTimeout(900);
   assert.equal(await page.locator('.map-node').nth(minor).getAttribute('aria-pressed'),'true');
   assert.match(await page.locator('.active-label').textContent(),/未命名/);
-  for (let i=0; i<7; i++) {
+  const namedCount = await page.locator('#node-rail button').count();
+  for (let i=0; i<namedCount; i++) {
     await page.locator('#node-rail button').nth(i).click(); await page.waitForTimeout(900);
     assert(await labelsClear(page), `Desktop node ${i}: labels overlap UI`);
   }

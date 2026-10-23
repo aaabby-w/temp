@@ -38,7 +38,7 @@ pnpm build
 
 ## 本地运行
 
-地图首次打开与 `RESET`／「返回总览」均使用最远视角 FOV 78；ZOOM 100% 对应此总览，缩放范围仍为 FOV 28–78。
+地图首次打开与 `RESET`／「返回总览」使用默认视角 FOV 71，ZOOM 100% 对应此默认视角，缩放范围为 FOV 28–78。手机端详情默认收起，点「展开档案」阅读，地点导航可横向滑动。
 
 中文使用随站点发布的 **Noto Serif SC 400**（SIL Open Font License 1.1），标题、地点名称和档案正文共享同一中文字体；英文 UI 保留无衬线字体。Fontsource 的 Unicode 分片按当前文字下载，构建只输出 WOFF2，`font-display: swap` 避免等待字体时文字不可见。许可随部署保存在 `licenses/noto-serif-sc-OFL.txt`。更新依赖时应保留分片和授权文件。
 

@@ -12,7 +12,7 @@ const MAP_ASPECT = MAP_SIZE.width / MAP_SIZE.height;
 const HEIGHT = (TAU * RADIUS) / MAP_ASPECT;
 const MIN_FOV = 28;
 const MAX_FOV = 78;
-const DEFAULT_FOV = MAX_FOV;
+const DEFAULT_FOV = 71;
 // Coordinate origin; the added 1024-pixel vector strip closes the actual
 // source edge cut. Moving this origin alone would not have repaired the seam.
 const MAP_SEAM_U = 0.79;
@@ -180,6 +180,7 @@ const bindings: MarkerBinding[] = ATLAS_NODES.map((node, index) => {
 });
 
 let active = 0;
+let panelExpanded = false;
 const initialU = new URLSearchParams(location.search).get('view') === 'seam'
   ? (MAP_SIZE.width - 512) / MAP_SIZE.width : normalizedPosition(ATLAS_NODES[active]).u;
 let rotation = (((initialU - MAP_SEAM_U + 1) % 1) - 0.5) * TAU;
@@ -188,7 +189,7 @@ let fov = DEFAULT_FOV;
 let targetFov = DEFAULT_FOV;
 let velocityX = 0;
 let animationFrame = 0;
-let lastFrameTime = performance.now();
+let lastFrameTime = 0;
 const pointers = new Map<number, { x: number; y: number }>();
 let previousPointer = { x: 0, y: 0 };
 let pinchDistance = 0;
@@ -268,16 +269,33 @@ function hideNodeTooltip() {
   layoutNodeLabels();
 }
 
+function updatePanelExpansion() {
+  panel.dataset.expanded = String(panelExpanded);
+  const toggle = panel.querySelector<HTMLButtonElement>(".panel-toggle");
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(panelExpanded));
+    toggle.textContent = panelExpanded ? "收起档案 −" : "展开档案 ＋";
+  }
+  requestRender();
+}
+
 function updatePanel() {
   const node = ATLAS_NODES[active];
   const { u, v } = normalizedPosition(node);
   const typeLabel = node.kind === "named" ? "NAMED NODE" : "UNNAMED SIGNAL";
   panel.dataset.kind = node.kind;
-  panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>地图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p>${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
+  panel.innerHTML = `<button class="panel-toggle" type="button" aria-controls="panel-facts panel-description panel-actions" aria-expanded="${panelExpanded}"></button><header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl id="panel-facts"><div><dt>地图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p id="panel-description">${node.note}</p><footer id="panel-actions"><span>${node.kind === "named" ? "REFERENCE " + node.code : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
   panel.classList.remove("is-revealing");
   void panel.offsetWidth;
   if (!reducedMotion.matches) panel.classList.add("is-revealing");
   panel.querySelector<HTMLButtonElement>("#panel-reset")?.addEventListener("click", resetView);
+  panel.querySelector<HTMLButtonElement>(".panel-toggle")?.addEventListener("click", () => {
+    panelExpanded = !panelExpanded;
+    panel.classList.remove("is-revealing");
+    updatePanelExpansion();
+  });
+  panel.scrollTop = 0;
+  updatePanelExpansion();
   nodesRoot.classList.add("has-selection");
   const name = document.createElement("strong");
   name.textContent = node.name;
@@ -295,17 +313,20 @@ function updatePanel() {
 function nearestTurn(angle: number) { return angle + Math.round((rotation - angle) / TAU) * TAU; }
 
 function selectNode(index: number, focus = false) {
+  const changed = index !== active;
   active = index;
   const { u } = normalizedPosition(ATLAS_NODES[index]);
   const displayU = (u - MAP_SEAM_U + 1) % 1;
   targetRotation = nearestTurn((displayU - 0.5) * TAU);
   if (focus) targetFov = 54;
   velocityX = 0;
-  updatePanel();
+  if (changed) updatePanel();
   hideNodeTooltip();
-  connection.classList.remove("is-drawing");
-  void connection.getBoundingClientRect();
-  connection.classList.add("is-drawing");
+  if (changed) {
+    connection.classList.remove("is-drawing");
+    void connection.getBoundingClientRect();
+    connection.classList.add("is-drawing");
+  }
   animate();
 }
 
@@ -315,6 +336,8 @@ function resetView() {
   targetRotation = nearestTurn((displayU - 0.5) * TAU);
   targetFov = DEFAULT_FOV;
   velocityX = 0;
+  panelExpanded = false;
+  updatePanelExpansion();
   animate();
 }
 
@@ -401,12 +424,15 @@ function render() {
 
 function tick(time: number) {
   animationFrame = 0;
-  const dt = Math.min(2, (time - lastFrameTime) / 16.67);
+  // Use consecutive RAF timestamps. Resetting to performance.now() after a
+  // slow render can make the next delta negative and drive easing backwards.
+  const dt = lastFrameTime ? THREE.MathUtils.clamp((time - lastFrameTime) / 16.67, 0, 2) : 1;
   lastFrameTime = time;
   const ease = reducedMotion.matches ? 1 : 1 - Math.pow(0.86, dt);
   if (reducedMotion.matches) velocityX = 0;
   rotation += (targetRotation - rotation) * ease;
-  fov += (targetFov - fov) * ease;
+  const nextFov = fov + (targetFov - fov) * ease;
+  fov = Number.isFinite(nextFov) ? THREE.MathUtils.clamp(nextFov, MIN_FOV, MAX_FOV) : DEFAULT_FOV;
   if (pointers.size === 0) {
     velocityX *= Math.pow(0.91, dt);
     rotation += velocityX * dt;
@@ -414,11 +440,11 @@ function tick(time: number) {
   }
   render();
   const moving = Math.abs(targetRotation - rotation) > 0.0001 || Math.abs(targetFov - fov) > 0.01 || Math.abs(velocityX) > 0.00002;
-  if (moving) animate();
+  if (moving) animationFrame = requestAnimationFrame(tick);
 }
 
-function animate() { if (!animationFrame) { lastFrameTime = performance.now(); animationFrame = requestAnimationFrame(tick); } }
-function requestRender() { if (!animationFrame) animationFrame = requestAnimationFrame(tick); }
+function animate() { requestRender(); }
+function requestRender() { if (!animationFrame) { lastFrameTime = 0; animationFrame = requestAnimationFrame(tick); } }
 
 function updatePointerLight(clientX: number, clientY: number) {
   const rect = screen.getBoundingClientRect();
@@ -491,6 +517,8 @@ async function copyNodeSnippet(clientX: number, clientY: number) {
 }
 
 screen.addEventListener("wheel", (event) => {
+  const target = event.target as HTMLElement;
+  if (target.closest("[data-ui]") && !target.closest(".map-node")) return;
   event.preventDefault();
   if (event.ctrlKey || event.metaKey) {
     zoomAt(targetFov + event.deltaY * 0.045, event.clientX);

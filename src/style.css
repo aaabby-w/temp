@@ -328,6 +328,7 @@ button { font: inherit; }
 .city-panel.is-revealing > p { animation-delay: 215ms; }
 .city-panel.is-revealing footer { animation-delay: 260ms; }
 .city-panel:hover { background: var(--panel-strong); }
+.panel-toggle { display: none; }
 .city-panel header { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .city-panel header span, .city-panel header small, .city-panel dt, .city-panel footer { color: var(--muted); font-size: 8px; letter-spacing: 0.14em; }
 .city-panel strong { font-family: var(--font-chinese); font-size: clamp(29px, 2.6vw, 43px); font-weight: 400; line-height: 1.4; }
@@ -344,12 +345,15 @@ button { font: inherit; }
 .viewport-controls button:last-child { border-right: 0; font-size: 8px; letter-spacing: 0.11em; }
 .viewport-controls button:hover, .viewport-controls button:focus-visible, .footer button:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 
-.node-rail { position: absolute; z-index: 12; bottom: 54px; left: 4vw; display: flex; width: max-content; max-width: calc(100vw - min(330px, 30vw) - 11vw); overflow: auto; scrollbar-width: none; }
+.node-rail { position: absolute; z-index: 12; bottom: 54px; left: 4vw; display: flex; width: max-content; max-width: calc(100vw - min(330px, 30vw) - 11vw); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; overscroll-behavior-x: contain; }
 .node-rail::-webkit-scrollbar { display: none; }
 .node-rail button { flex: 0 0 auto; display: grid; min-width: 66px; min-height: 36px; padding: 6px 10px; border: 0; border-right: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; text-align: left; }
 .node-rail span { color: var(--text); font-size: 8px; letter-spacing: 0.12em; }
 .node-rail small { font-family: var(--font-chinese); font-size: 10px; font-weight: 400; line-height: 1.5; }
-.node-rail button.active, .node-rail button:hover, .node-rail button:focus-visible { background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--text); }
+.node-rail button.active, .node-rail button:focus-visible { background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--text); }
+@media (hover: hover) and (pointer: fine) {
+  .node-rail button:hover { background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--text); }
+}
 
 .author-tools { position: absolute; z-index: 14; bottom: 54px; left: 4vw; display: none; min-height: 36px; align-items: center; padding: 0 12px; color: var(--muted); font-size: 9px; letter-spacing: .08em; }
 .author-mode .author-tools { display: flex; }
@@ -380,14 +384,24 @@ button { font: inherit; }
 @keyframes panel-sweep { 0% { opacity: 0; transform: translateX(0); } 20% { opacity: .9; } 100% { opacity: 0; transform: translateX(200%); } }
 @keyframes ready-breathe { 50% { opacity: .55; box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal) 7%, transparent), 0 0 12px color-mix(in srgb, var(--signal) 42%, transparent); } }
 
-@media (max-width: 760px) {
-  .masthead { top: max(10px, env(safe-area-inset-top)); right: 12px; left: 12px; width: auto; padding: 10px 12px; }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+  .masthead { top: max(10px, env(safe-area-inset-top)); right: 12px; left: 12px; width: auto; padding: 9px 12px; }
+  .masthead small { font-size: 7px; }
   .masthead p { display: none; }
-  .masthead h1 { font-size: clamp(24px, 6.8vw, 28px); }
-  .node-rail { top: calc(max(10px, env(safe-area-inset-top)) + 70px); right: auto; bottom: auto; left: 12px; max-width: calc(100vw - 24px); }
-  .node-rail button { min-width: 59px; min-height: 37px; }
-  .city-panel { right: 11px; bottom: calc(95px + env(safe-area-inset-bottom)); left: 11px; width: auto; max-height: 34svh; overflow: auto; padding: 14px 16px 12px; transform: none; }
-  .city-panel strong { font-size: 29px; }
+  .masthead h1 { font-size: clamp(21px, 5.8vw, 24px); }
+  .node-rail { top: calc(max(10px, env(safe-area-inset-top)) + 64px); right: 12px; bottom: auto; left: 12px; width: auto; max-width: none; gap: 6px; padding: 0 0 2px; border: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .node-rail button { display: flex; align-items: center; justify-content: center; min-width: 64px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); -webkit-tap-highlight-color: transparent; user-select: none; }
+  .node-rail span { display: none; }
+  .node-rail small { font-size: 12px; white-space: nowrap; }
+  .city-panel { right: 11px; bottom: calc(95px + env(safe-area-inset-bottom)); left: 11px; width: auto; max-height: 42svh; overflow: auto; padding: 12px 14px; transform: none; overscroll-behavior-y: contain; touch-action: pan-y; }
+  .city-panel header { gap: 2px; padding: 0 92px 8px 0; }
+  .city-panel header > span { display: none; }
+  .city-panel header small { font-size: 10px; letter-spacing: .06em; }
+  .city-panel strong { font-size: 24px; }
+  .panel-toggle { position: absolute; z-index: 1; top: 12px; right: 10px; display: flex; align-items: center; justify-content: center; min-width: 86px; min-height: 44px; padding: 6px; border: 0; border-radius: 4px; background: none; color: var(--text); font: 11px var(--font-chinese); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .panel-toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+  .city-panel[data-expanded="false"] header { padding-bottom: 0; border-bottom: 0; }
+  .city-panel[data-expanded="false"] > dl, .city-panel[data-expanded="false"] > p, .city-panel[data-expanded="false"] > footer { display: none; }
   .city-panel > p { min-height: 0; margin: 9px 0; }
   .viewport-controls { right: 11px; bottom: calc(48px + env(safe-area-inset-bottom)); }
   .footer { right: 12px; left: 12px; }
@@ -405,7 +419,7 @@ button { font: inherit; }
   .author-mode .viewport-controls { display: none; }
 }
 
-@media (max-height: 650px) and (min-width: 761px) {
+@media (max-height: 650px) and (min-width: 761px) and (pointer: fine) {
   .masthead { top: 10px; }
   .masthead h1 { font-size: 33px; }
   .city-panel { bottom: 94px; transform: translate3d(var(--hud-x), var(--hud-y), 0) scale(.9); transform-origin: right bottom; }
