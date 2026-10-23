@@ -10,9 +10,9 @@ const TAU = Math.PI * 2;
 const RADIUS = 7.8;
 const MAP_ASPECT = MAP_SIZE.width / MAP_SIZE.height;
 const HEIGHT = (TAU * RADIUS) / MAP_ASPECT;
-const DEFAULT_FOV = 71;
 const MIN_FOV = 28;
 const MAX_FOV = 78;
+const DEFAULT_FOV = MAX_FOV;
 // Coordinate origin; the added 1024-pixel vector strip closes the actual
 // source edge cut. Moving this origin alone would not have repaired the seam.
 const MAP_SEAM_U = 0.79;
@@ -35,6 +35,13 @@ const authorToast = document.querySelector<HTMLElement>("#author-toast")!;
 const status = document.querySelector<HTMLElement>("#viewport-status")!;
 const cursorStatus = document.querySelector<HTMLElement>("#cursor-status")!;
 const tooltip = document.querySelector<HTMLElement>("#node-tooltip")!;
+const activeTooltip = document.createElement("div");
+activeTooltip.className = "node-tooltip hud active-label";
+activeTooltip.setAttribute("aria-hidden", "true");
+screen.append(activeTooltip);
+const overlayObstacles = [...document.querySelectorAll<HTMLElement>(
+  '.masthead, .city-panel, .node-rail, .viewport-controls, .footer, .author-tools, .author-snippet',
+)];
 const connection = document.querySelector<SVGSVGElement>("#node-connection")!;
 const connectionPath = document.querySelector<SVGPathElement>("#node-connection-path")!;
 const connectionOrigin = document.querySelector<SVGCircleElement>("#node-connection-origin")!;
@@ -156,8 +163,7 @@ const bindings: MarkerBinding[] = ATLAS_NODES.map((node, index) => {
   button.setAttribute("aria-label", `${node.code} ${node.name}`);
   button.innerHTML = `<i aria-hidden="true"></i>`;
   button.addEventListener("click", (event) => { event.stopPropagation(); selectNode(index, true); });
-  button.addEventListener("pointerenter", (event) => showNodeTooltip(index, event.clientX, event.clientY));
-  button.addEventListener("pointermove", (event) => positionTooltip(event.clientX, event.clientY));
+  button.addEventListener("pointerenter", (event) => { if (event.pointerType !== "touch") showNodeTooltip(index); });
   button.addEventListener("pointerleave", hideNodeTooltip);
   button.addEventListener("focus", () => showNodeTooltip(index));
   button.addEventListener("blur", hideNodeTooltip);
@@ -192,27 +198,74 @@ let toastTimer = 0;
 let lastSnippet = "";
 let hoveredNode = -1;
 let activeScreenPoint = { x: 0, y: 0, visible: false };
+const screenPoints = bindings.map(() => ({ x: 0, y: 0, visible: false }));
+type Bounds = { left: number; top: number; right: number; bottom: number };
 
-function positionTooltip(clientX?: number, clientY?: number) {
-  const rect = screen.getBoundingClientRect();
-  const markerRect = hoveredNode >= 0 ? bindings[hoveredNode].button.getBoundingClientRect() : null;
-  const x = clientX === undefined ? (markerRect ? markerRect.left - rect.left + markerRect.width * 0.5 : activeScreenPoint.x) : clientX - rect.left;
-  const y = clientY === undefined ? (markerRect ? markerRect.top - rect.top + markerRect.height * 0.5 : activeScreenPoint.y) : clientY - rect.top;
-  tooltip.style.setProperty("--tooltip-x", `${THREE.MathUtils.clamp(x + 16, 12, rect.width - 190)}px`);
-  tooltip.style.setProperty("--tooltip-y", `${THREE.MathUtils.clamp(y + 18, 78, rect.height - 90)}px`);
+function blockedAreas(rect: DOMRect): Bounds[] {
+  return overlayObstacles.filter(element => element.getClientRects().length).map(element => {
+    const area = element.getBoundingClientRect();
+    return { left: area.left - rect.left - 8, top: area.top - rect.top - 8,
+      right: area.right - rect.left + 8, bottom: area.bottom - rect.top + 8 };
+  });
 }
 
-function showNodeTooltip(index: number, clientX?: number, clientY?: number) {
+function intersects(a: Bounds, b: Bounds) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function placeLabel(element: HTMLElement, index: number, rect: DOMRect, obstacles: Bounds[]) {
+  const point = screenPoints[index];
+  if (authorMode || !point?.visible) { element.classList.remove("show"); return null; }
+  const width = element.offsetWidth, height = element.offsetHeight;
+  const { x, y } = point;
+  const gap = 25;
+  const candidates = [
+    [x + gap, y - height / 2], [x - width - gap, y - height / 2],
+    [x - width / 2, y - height - gap], [x - width / 2, y + gap],
+    [x + gap, y - height - gap], [x - width - gap, y - height - gap],
+    [x + gap, y + gap], [x - width - gap, y + gap],
+  ].map(([left, top], order) => {
+    left = THREE.MathUtils.clamp(left, 12, Math.max(12, rect.width - width - 12));
+    top = THREE.MathUtils.clamp(top, 12, Math.max(12, rect.height - height - 12));
+    const bounds = { left, top, right: left + width, bottom: top + height };
+    // Avoid other important markers too, but never sacrifice UI clearance.
+    const coveredMarkers = screenPoints.filter((p, i) => p.visible && i !== index &&
+      (ATLAS_NODES[i].kind === "named" || i === active) &&
+      intersects(bounds, { left: p.x - 16, right: p.x + 16, top: p.y - 16, bottom: p.y + 16 })).length;
+    return { bounds, score: coveredMarkers * 100 + order };
+  }).filter(({ bounds }) => !obstacles.some(area => intersects(bounds, area)) &&
+    !intersects(bounds, { left: x - 18, right: x + 18, top: y - 18, bottom: y + 18 }));
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0]?.bounds;
+  element.classList.toggle("show", !!best);
+  if (!best) return null; // Hide instead of covering controls on a cramped viewport.
+  element.style.setProperty("--tooltip-x", `${best.left}px`);
+  element.style.setProperty("--tooltip-y", `${best.top}px`);
+  return best;
+}
+
+function layoutNodeLabels(rect = screen.getBoundingClientRect(), obstacles = blockedAreas(rect)) {
+  const activeBounds = placeLabel(activeTooltip, active, rect, obstacles);
+  if (hoveredNode >= 0 && hoveredNode !== active) {
+    placeLabel(tooltip, hoveredNode, rect, activeBounds ? [...obstacles, activeBounds] : obstacles);
+  } else tooltip.classList.remove("show");
+}
+
+function showNodeTooltip(index: number) {
   hoveredNode = index;
   const node = ATLAS_NODES[index];
-  tooltip.innerHTML = `<span>${node.code} / ${node.kind === "named" ? "ARCHIVED" : "SIGNAL"}</span><strong>${node.name}</strong><small>X ${Math.round(node.x)} · Y ${Math.round(node.y)}</small>`;
-  tooltip.classList.add("show");
-  positionTooltip(clientX, clientY);
+  const name = document.createElement("strong");
+  name.textContent = node.name;
+  const hint = document.createElement("small");
+  hint.textContent = node.kind === "named" ? "会馆 · 点击查看" : "地点 · 点击查看";
+  tooltip.replaceChildren(name, hint);
+  layoutNodeLabels();
 }
 
 function hideNodeTooltip() {
   hoveredNode = -1;
   tooltip.classList.remove("show");
+  layoutNodeLabels();
 }
 
 function updatePanel() {
@@ -220,15 +273,22 @@ function updatePanel() {
   const { u, v } = normalizedPosition(node);
   const typeLabel = node.kind === "named" ? "NAMED NODE" : "UNNAMED SIGNAL";
   panel.dataset.kind = node.kind;
-  panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>地图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p style="white-space: pre-line">${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
+  panel.innerHTML = `<header><span>${node.code} · ${typeLabel}</span><strong>${node.name}</strong><small>${node.kind === "named" ? "已命名区域节点" : "待归档观测节点"}</small></header><dl><div><dt>地图坐标</dt><dd>${Math.round(node.x)} / ${Math.round(node.y)}</dd></div><div><dt>地图位置</dt><dd>${u.toFixed(3)} / ${v.toFixed(3)}</dd></div></dl><p>${node.note}</p><footer><span>${node.kind === "named" ? "REFERENCE 01—07" : "REFERENCE POINT"}</span><button type="button" id="panel-reset">返回总览</button></footer>`;
   panel.classList.remove("is-revealing");
   void panel.offsetWidth;
   if (!reducedMotion.matches) panel.classList.add("is-revealing");
   panel.querySelector<HTMLButtonElement>("#panel-reset")?.addEventListener("click", resetView);
   nodesRoot.classList.add("has-selection");
+  const name = document.createElement("strong");
+  name.textContent = node.name;
+  const state = document.createElement("small");
+  state.textContent = "已选中";
+  activeTooltip.replaceChildren(name, state);
   bindings.forEach(({ button, railButton }, index) => {
     button.classList.toggle("active", index === active);
+    button.setAttribute("aria-pressed", String(index === active));
     railButton?.classList.toggle("active", index === active);
+    railButton?.setAttribute("aria-pressed", String(index === active));
   });
 }
 
@@ -242,11 +302,7 @@ function selectNode(index: number, focus = false) {
   if (focus) targetFov = 54;
   velocityX = 0;
   updatePanel();
-  const marker = bindings[index].button;
-  marker.classList.remove("scan-hit");
-  void marker.offsetWidth;
-  marker.classList.add("scan-hit");
-  window.setTimeout(() => marker.classList.remove("scan-hit"), 980);
+  hideNodeTooltip();
   connection.classList.remove("is-drawing");
   void connection.getBoundingClientRect();
   connection.classList.add("is-drawing");
@@ -277,35 +333,45 @@ function zoomAt(nextFov: number, clientX: number) {
 
 function projectNodes() {
   const rect = screen.getBoundingClientRect();
+  const obstacles = blockedAreas(rect);
+  const detail = THREE.MathUtils.clamp((DEFAULT_FOV - fov) / (DEFAULT_FOV - MIN_FOV), 0, 1);
+  nodesRoot.style.setProperty("--minor-opacity", `${.7 + detail * .26}`);
+  nodesRoot.style.setProperty("--minor-size", `${7 + detail * 1.5}px`);
   ring.updateMatrixWorld(true);
   nodePoints.forEach((position, index) => {
     const world = position.clone().applyMatrix4(ring.matrixWorld);
     const projected = world.clone().project(camera);
-    const visible = world.z < -1.2 && Math.abs(projected.x) < 1.06 && Math.abs(projected.y) < 1.08;
+    const x = (projected.x * .5 + .5) * rect.width;
+    const y = (-projected.y * .5 + .5) * rect.height;
+    const visible = world.z < -1.2 && x > 8 && x < rect.width - 8 && y > 8 && y < rect.height - 8 &&
+      !obstacles.some(area => x > area.left && x < area.right && y > area.top && y < area.bottom);
     const button = bindings[index].button;
     button.style.setProperty("--x", `${(projected.x * 0.5 + 0.5) * rect.width}px`);
     button.style.setProperty("--y", `${(-projected.y * 0.5 + 0.5) * rect.height}px`);
-    button.style.setProperty("--depth", `${THREE.MathUtils.clamp((-world.z - 2) / RADIUS, 0.58, 1)}`);
+    button.style.setProperty("--depth", `${THREE.MathUtils.clamp((-world.z - 2) / RADIUS, 0.88, 1)}`);
     button.toggleAttribute("data-visible", visible);
-    if (index === active) activeScreenPoint = {
-      x: (projected.x * 0.5 + 0.5) * rect.width,
-      y: (-projected.y * 0.5 + 0.5) * rect.height,
-      visible,
-    };
+    button.tabIndex = visible && !authorMode ? 0 : -1;
+    button.setAttribute("aria-hidden", String(!visible || authorMode));
+    screenPoints[index] = { x, y, visible };
+    if (index === active) activeScreenPoint = screenPoints[index];
   });
   const panelRect = panel.getBoundingClientRect();
-  const endX = panelRect.left - rect.left + 1;
-  const endY = panelRect.top - rect.top + Math.min(54, panelRect.height * 0.3);
   const startX = activeScreenPoint.x;
   const startY = activeScreenPoint.y;
-  const bend = Math.max(44, Math.abs(endX - startX) * 0.42);
-  connectionPath.setAttribute("d", `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend * 0.28} ${endY}, ${endX} ${endY}`);
+  const left = panelRect.left - rect.left, right = panelRect.right - rect.left;
+  const top = panelRect.top - rect.top, bottom = panelRect.bottom - rect.top;
+  const px = THREE.MathUtils.clamp(startX, left + 20, right - 20);
+  const py = THREE.MathUtils.clamp(startY, top + 20, bottom - 20);
+  const ends = [{ x: left, y: py, nx: -1, ny: 0 }, { x: right, y: py, nx: 1, ny: 0 },
+    { x: px, y: top, nx: 0, ny: -1 }, { x: px, y: bottom, nx: 0, ny: 1 }];
+  ends.sort((a, b) => Math.hypot(a.x - startX, a.y - startY) - Math.hypot(b.x - startX, b.y - startY));
+  const end = ends[0];
+  const bend = Math.min(110, Math.hypot(end.x - startX, end.y - startY) * .35);
+  connectionPath.setAttribute("d", `M ${startX} ${startY} C ${startX + (end.x - startX) * .32} ${startY + (end.y - startY) * .32}, ${end.x + end.nx * bend} ${end.y + end.ny * bend}, ${end.x} ${end.y}`);
   connectionOrigin.setAttribute("cx", `${startX}`);
   connectionOrigin.setAttribute("cy", `${startY}`);
-  connection.toggleAttribute("data-visible", activeScreenPoint.visible);
-  if (hoveredNode >= 0 && document.activeElement === bindings[hoveredNode]?.button) {
-    positionTooltip();
-  }
+  connection.toggleAttribute("data-visible", activeScreenPoint.visible && !authorMode);
+  layoutNodeLabels(rect, obstacles);
 }
 
 function updateStatus() {
@@ -337,7 +403,8 @@ function tick(time: number) {
   animationFrame = 0;
   const dt = Math.min(2, (time - lastFrameTime) / 16.67);
   lastFrameTime = time;
-  const ease = 1 - Math.pow(0.86, dt);
+  const ease = reducedMotion.matches ? 1 : 1 - Math.pow(0.86, dt);
+  if (reducedMotion.matches) velocityX = 0;
   rotation += (targetRotation - rotation) * ease;
   fov += (targetFov - fov) * ease;
   if (pointers.size === 0) {
@@ -388,6 +455,8 @@ function setAuthorMode(next: boolean) {
     authorToast.classList.remove("show");
     window.clearTimeout(toastTimer);
   }
+  hideNodeTooltip();
+  requestRender();
 }
 
 async function copyText(text: string) {
@@ -520,13 +589,16 @@ authorCopy.addEventListener("click", async () => {
   toastTimer = window.setTimeout(() => authorToast.classList.remove("show"), 1800);
 });
 themeButton.addEventListener("click", () => { theme = theme === "light" ? "dark" : "light"; applyTheme(); });
+reducedMotion.addEventListener("change", requestRender);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = 0; }
   else if (!document.hidden) animate();
 });
 
 new ResizeObserver(resize).observe(screen);
+new ResizeObserver(requestRender).observe(panel);
 setAuthorMode(authorMode);
 updatePanel();
 applyTheme();
 resize();
+void document.fonts.ready.then(requestRender);
