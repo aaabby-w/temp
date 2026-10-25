@@ -42,7 +42,7 @@ toggle.setAttribute('aria-label', 'Toggle gold particle rain');
 
 toggle.innerHTML = `
   <span class="gold-toggle-icon" aria-hidden="true">✧</span>
-  <span class="gold-toggle-label">GOLD RAIN</span>
+  <span class="gold-toggle-label">金粒子效果</span>
   <span class="gold-toggle-track">
     <span class="gold-toggle-knob"></span>
   </span>
