@@ -1,4 +1,4 @@
-/* Random falling gold particles. Decorative only; map controls remain clickable. */
+/* Random falling gold particles */
 .gold-rain-overlay {
   position: fixed;
   inset: 0;
@@ -10,41 +10,59 @@
 
 .gold-rain-particle {
   position: absolute;
-  top: -8vh;
+  top: -12px;
   left: var(--left);
   width: var(--size);
   height: var(--size);
   border-radius: 50%;
   opacity: var(--opacity);
-  filter: blur(var(--blur));
-  background:
-    radial-gradient(circle at 30% 25%, #fff8c7 0 10%, #ffe68a 18%, #f6b923 48%, #b87908 78%, #fff0a6 100%);
-  box-shadow: 0 0 5px rgb(255 203 70 / 55%), 0 0 11px rgb(255 188 40 / 22%);
+  background: radial-gradient(
+    circle at 30% 25%,
+    #fff8c7 0%,
+    #ffe68a 20%,
+    #f6b923 55%,
+    #b87908 100%
+  );
+  box-shadow:
+    0 0 5px rgb(255 203 70 / 60%),
+    0 0 12px rgb(255 188 40 / 25%);
   animation: gold-particle-fall var(--duration) var(--delay) linear infinite;
   will-change: transform;
 }
 
 .gold-rain-particle.is-sparkle {
-  width: calc(var(--size) * 1.35);
-  height: calc(var(--size) * 1.35);
   border-radius: 1px;
   background: #ffeaa0;
-  box-shadow: 0 0 4px 1px rgb(255 230 135 / 75%), 0 0 12px rgb(255 190 45 / 55%);
-  clip-path: polygon(50% 0%, 61% 37%, 100% 50%, 61% 63%, 50% 100%, 39% 63%, 0% 50%, 39% 37%);
+  box-shadow:
+    0 0 5px rgb(255 230 135 / 80%),
+    0 0 13px rgb(255 190 45 / 60%);
+  clip-path: polygon(
+    50% 0%, 61% 37%, 100% 50%, 61% 63%,
+    50% 100%, 39% 63%, 0% 50%, 39% 37%
+  );
 }
 
 @keyframes gold-particle-fall {
   0% {
     transform: translate3d(0, -5vh, 0) rotate(0deg);
   }
-  25% {
-    transform: translate3d(calc(var(--sway) * 0.45), 25vh, 0) rotate(95deg);
+  20% {
+    transform: translate3d(calc(var(--sway) * 0.3), 20vh, 0) rotate(80deg);
   }
-  60% {
-    transform: translate3d(calc(var(--drift) * 0.55), 65vh, 0) rotate(225deg);
+  55% {
+    transform: translate3d(calc(var(--drift) * 0.5), 58vh, 0) rotate(210deg);
+  }
+  82% {
+    transform: translate3d(var(--drift), 90vh, 0) rotate(310deg);
+  }
+  88% {
+    transform: translate3d(calc(var(--drift) * 1.05), 94vh, 0) rotate(350deg);
+  }
+  94% {
+    transform: translate3d(calc(var(--drift) * 0.95), 91vh, 0) rotate(410deg);
   }
   100% {
-    transform: translate3d(var(--drift), 115vh, 0) rotate(360deg);
+    transform: translate3d(var(--drift), 115vh, 0) rotate(480deg);
   }
 }
 
