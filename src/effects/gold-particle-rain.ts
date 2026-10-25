@@ -1,7 +1,7 @@
 import './gold-particle-rain.css';
 
 const OVERLAY_ID = 'gold-particle-rain-overlay';
-const PARTICLE_COUNT = 52;
+const PARTICLE_COUNT = 85;
 
 function createGoldRain() {
   if (document.getElementById(OVERLAY_ID)) return;
@@ -17,14 +17,13 @@ function createGoldRain() {
 
     // Each particle gets its own position, speed, size, delay, and sideways drift.
     particle.style.setProperty('--left', `${Math.random() * 100}%`);
-    particle.style.setProperty('--size', `${2 + Math.random() * 5}px`);
-    particle.style.setProperty('--duration', `${6 + Math.random() * 10}s`);
-    particle.style.setProperty('--delay', `${-Math.random() * 16}s`);
-    particle.style.setProperty('--drift', `${-9 + Math.random() * 18}vw`);
-    particle.style.setProperty('--sway', `${-3 + Math.random() * 6}vw`);
-    particle.style.setProperty('--opacity', `${0.35 + Math.random() * 0.6}`);
-    particle.style.setProperty('--blur', `${Math.random() * 0.8}px`);
-
+    particle.style.setProperty('--size', `${2 + Math.random() * 4}px`);
+    particle.style.setProperty('--duration', `${2.2 + Math.random() * 2.8}s`);
+    particle.style.setProperty('--delay', `${-Math.random() * 5}s`);
+    particle.style.setProperty('--drift', `${-12 + Math.random() * 24}vw`);
+    particle.style.setProperty('--sway', `${-4 + Math.random() * 8}vw`);
+    particle.style.setProperty('--opacity', `${0.45 + Math.random() * 0.55}`);
+    particle.style.setProperty('--bounce', `${0.15 + Math.random() * 0.45}s`);
     overlay.appendChild(particle);
   }
 
