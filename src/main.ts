@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createVectorAtlas } from "./vector-atlas";
 import { ATLAS_NODES, MAP_SIZE, normalizedPosition, type AtlasNode } from "./nodes";
 import "./style.css";
+import './effects/gold-particle-rain.ts';
 
 type Theme = "light" | "dark";
 type MarkerBinding = { button: HTMLButtonElement; railButton?: HTMLButtonElement };
