@@ -28,6 +28,40 @@ function createGoldRain() {
   }
 
   document.body.appendChild(overlay);
+
+const saved = localStorage.getItem('gold-rain-enabled');
+const enabled = saved !== 'false';
+
+overlay.classList.toggle('is-disabled', !enabled);
+
+const toggle = document.createElement('button');
+toggle.type = 'button';
+toggle.className = 'gold-rain-toggle';
+toggle.setAttribute('aria-pressed', String(enabled));
+toggle.setAttribute('aria-label', 'Toggle gold particle rain');
+
+toggle.innerHTML = `
+  <span class="gold-toggle-icon" aria-hidden="true">✧</span>
+  <span class="gold-toggle-label">GOLD RAIN</span>
+  <span class="gold-toggle-track">
+    <span class="gold-toggle-knob"></span>
+  </span>
+`;
+
+function updateToggle(on: boolean) {
+  overlay.classList.toggle('is-disabled', !on);
+  toggle.classList.toggle('is-on', on);
+  toggle.setAttribute('aria-pressed', String(on));
+  toggle.setAttribute('aria-label', on ? '关闭金币雨' : '开启金币雨');
+  localStorage.setItem('gold-rain-enabled', String(on));
+}
+
+toggle.addEventListener('click', () => {
+  updateToggle(toggle.getAttribute('aria-pressed') !== 'true');
+});
+
+document.body.appendChild(toggle);
+updateToggle(enabled);
 }
 
 if (document.readyState === 'loading') {
